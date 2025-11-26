@@ -87,7 +87,7 @@ class PaymentDetailsWindow(tk.Toplevel):
         self.card_entry.pack(fill="x", padx=20, pady=5)
 
         # Expiry & CVV
-        tk.Label(self, text="Expiry (MM/YY)", font=("Comic Sans MS", 12, "bold"), bg="#FFC0CB").pack(anchor="w", padx=20)
+        tk.Label(self, text="Expiry (MMYY)", font=("Comic Sans MS", 12, "bold"), bg="#FFC0CB").pack(anchor="w", padx=20)
         self.expiry_entry = tk.Entry(self, font=("Helvetica", 12))
         self.expiry_entry.pack(fill="x", padx=20, pady=5)
 
@@ -109,6 +109,9 @@ class PaymentDetailsWindow(tk.Toplevel):
             return
         if len(card) != 16 or not card.isdigit():
             messagebox.showerror("Error", "Card number must be 16 digits")
+            return
+        if len(expiry) != 4 or not expiry.isdigit():
+            messagebox.showerror("Error", "Expiry date must be 4 digits")
             return
         if len(cvv) != 3 or not cvv.isdigit():
             messagebox.showerror("Error", "CVV must be 3 digits")
@@ -137,4 +140,5 @@ class TicketSelectionWindow(tk.Toplevel):
         tk.Label(self, text="Number of Tickets", font=("Helvetica", 14)).pack(pady=5)
         self.ticket_var = tk.IntVar(value=1)
         tk.Spinbo
+
 
