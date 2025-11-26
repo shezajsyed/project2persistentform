@@ -127,6 +127,21 @@ class SeatSelectionWindow:
         conn.close()
 
         messagebox.showinfo("Success", f"Seats {list(self.selected_seats)} booked!")
+        
+        # -- Data analysis (pandas) --
+        import pandas as pd
+        import matplotlib.pyplot as plt
+
+        conn = sqlite3.connect("cinema.db")
+        df = pd.read_sql_query("SELECT * FROM seats", conn)
+        conn.close()
+
+        df['status'].value_counts().plot(kind='bar', color=['green', 'red'])
+        plt.title("Seat Booking Status")
+        plt.xlabel("Seat Status (1=Available, 0=Booked)")
+        plt.ylabel("Number of Seats")
+        plt.show()
+
         self.master.destroy()
 
 if __name__ == "__main__":
