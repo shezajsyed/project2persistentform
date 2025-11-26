@@ -1,0 +1,365 @@
+import tkinter as tk
+from tkinter import messagebox
+from PIL import Image, ImageTk
+import sqlite3
+import os
+
+DB_FILE = "Theatre_Kiosk.db"
+
+
+# esc button
+def enable_escape_to_exit(window):
+    window.bind_all("<Escape>", lambda e: window.attributes('-fullscreen', False))
+
+
+# Database
+def init_db():
+    conn = sqlite3.connect(DB_FILE)
+    c = conn.cursor()
+    
+
+
+
+
+
+    # Movies
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS movies (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        title TEXT,
+        image TEXT
+    )
+    """)
+
+    # Seats
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS seats (
+        seat_id INTEGER PRIMARY KEY,
+        status INTEGER DEFAULT 1
+    )
+    """)
+
+    # Bookings
+    c.execute("""
+    CREATE TABLE IF NOT EXISTS bookings (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        movie TEXT,
+        showtime TEXT,
+        tickets INTEGER,
+        name TEXT,
+        seats TEXT
+    )
+    """)
+
+    # Insert movies if empty
+    c.execute("SELECT COUNT(*) FROM movies")
+    if c.fetchone()[0] == 0:
+        movies = [
+            ("La La Land", "png/LLL_1.png"),
+            ("How To Lose a Guy In 10 Days", "png/HTLAGITD_4.png"),
+            ("27 Dresses", "png/TSD_2.png"),
+            ("The Notebook", "png/TN_3.png"),
+            ("The Princess Bride", "png/TPB_5.png")
+        ]
+        c.executemany("INSERT INTO movies (title, image) VALUES (?, ?)", movies)
+
+    # Insert seats if empty
+    c.execute("SELECT COUNT(*) FROM seats")
+    if c.fetchone()[0] == 0:
+        for i in range(1, 31):
+            c.execute("INSERT INTO seats (seat_id, status) VALUES (?, 1)", (i,))
+
+    conn.commit()
+    conn.close()
+
+
+# Payment
+class PaymentDetailsWindow(tk.Toplevel):
+    def __init__(self, movie, showtime, tickets, seats, main_page):
+        super().__init__()
+        self.title("Payment Details")
+        self.attributes('-fullscreen', True)
+        enable_escape_to_exit(self)
+        self.configure(bg="#FFC0CB")
+
+        self.movie = movie
+        self.showtime = showtime
+        self.tickets = tickets
+        self.seats = seats
+        self.main_page = main_page    # Remember main page
+
+        header_font = ("Helvetica", 32, "bold")
+        label_font = ("Helvetica", 18)
+        entry_font = ("Helvetica", 16)
+
+        tk.Label(self, text="Payment Details", font=header_font, bg="#FFC0CB").pack(pady=30)
+
+        tk.Label(self, text=f"Movie: {movie}", font=label_font, bg="#FFC0CB").pack(pady=5)
+        tk.Label(self, text=f"Showtime: {showtime}", font=label_font, bg="#FFC0CB").pack(pady=5)
+        tk.Label(self, text=f"Tickets: {tickets}", font=label_font, bg="#FFC0CB").pack(pady=5)
+        tk.Label(self, text=f"Seats: {', '.join(map(str, seats))}", font=label_font, bg="#FFC0CB").pack(pady=15)
+
+        # Payment Form
+        form_frame = tk.Frame(self, bg="#FFC0CB")
+        form_frame.pack(pady=20)
+
+        tk.Label(form_frame, text="Name on Card", font=label_font, bg="#FFC0CB").grid(row=0, column=0, sticky="w")
+        self.name_entry = tk.Entry(form_frame, font=entry_font, width=30)
+        self.name_entry.grid(row=0, column=1, pady=10, padx=10)
+
+        tk.Label(form_frame, text="Card Number", font=label_font, bg="#FFC0CB").grid(row=1, column=0, sticky="w")
+        self.card_entry = tk.Entry(form_frame, font=entry_font, width=30)
+        self.card_entry.grid(row=1, column=1, pady=10, padx=10)
+
+        tk.Label(form_frame, text="Expiry (MM/YY)", font=label_font, bg="#FFC0CB").grid(row=2, column=0, sticky="w")
+        self.expiry_entry = tk.Entry(form_frame, font=entry_font, width=15)
+        self.expiry_entry.grid(row=2, column=1, pady=10, padx=10, sticky="w")
+
+        tk.Label(form_frame, text="CVV", font=label_font, bg="#FFC0CB").grid(row=3, column=0, sticky="w")
+        self.cvv_entry = tk.Entry(form_frame, font=entry_font, width=10, show="*")
+        self.cvv_entry.grid(row=3, column=1, pady=10, padx=10, sticky="w")
+
+        tk.Button(self, text="Pay Now", font=("Helvetica", 22, "bold"), bg="#FF69B4",
+                  fg="white", activebackground="#FF85C1",
+                  command=self.process_payment).pack(pady=40)
+
+    def process_payment(self):
+        name = self.name_entry.get()
+        card = self.card_entry.get()
+        expiry = self.expiry_entry.get()
+        cvv = self.cvv_entry.get()
+
+        # Validate inputs
+        if not all([name, card, expiry, cvv]):
+            messagebox.showerror("Error", "Please fill in all fields!")
+            return
+        if not (card.isdigit() and len(card) == 16):
+            messagebox.showerror("Error", "Card number must be 16 digits")
+            return
+        if not (cvv.isdigit() and len(cvv) == 3):
+            messagebox.showerror("Error", "CVV must be 3 digits")
+            return
+
+        # Save to DB
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        seats_str = ",".join(map(str, self.seats))
+        c.execute("INSERT INTO bookings(movie, showtime, tickets, name, seats) VALUES (?, ?, ?, ?, ?)",
+                  (self.movie, self.showtime, self.tickets, name, seats_str))
+        conn.commit()
+        conn.close()
+
+        messagebox.showinfo("Success", "Payment Successful!")
+
+        # Show main page again
+        self.main_page.deiconify()
+        self.destroy()
+
+
+# Seat
+class SeatSelectionWindow(tk.Toplevel):
+    def __init__(self, movie, showtime, tickets, main_page):
+        super().__init__()
+        self.title("Seat Selection")
+        self.attributes('-fullscreen', True)
+        enable_escape_to_exit(self)
+        self.configure(bg="#FFC0CB")
+
+        self.movie = movie
+        self.showtime = showtime
+        self.tickets = tickets
+        self.selected_seats = set()
+        self.main_page = main_page
+
+        self.load_seats()
+        self.build_ui()
+
+    def load_seats(self):
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("SELECT seat_id, status FROM seats ORDER BY seat_id")
+        self.seat_data = c.fetchall()
+        conn.close()
+
+    def build_ui(self):
+        tk.Label(self, text=f"Select {self.tickets} Seat(s) for {self.movie}",
+                 font=("Helvetica", 32, "bold"),
+                 bg="#FFC0CB").pack(pady=30)
+
+        grid_frame = tk.Frame(self, bg="#FFC0CB")
+        grid_frame.pack()
+
+        self.colors = {"available": "#7A5C61", "selected": "#F9D5E5", "taken": "#444"}
+        self.buttons = {}
+        row, col = 0, 0
+
+        for seat_id, status in self.seat_data:
+            color = self.colors["available"] if status == 1 else self.colors["taken"]
+
+            btn = tk.Button(
+                grid_frame,
+                text=str(seat_id),
+                width=6,
+                height=3,
+                bg=color,
+                fg="white",
+                font=("Helvetica", 14, "bold"),
+                state="normal" if status == 1 else "disabled",
+                command=lambda s=seat_id: self.toggle_seat(s)
+            )
+            btn.grid(row=row, column=col, padx=10, pady=10)
+            self.buttons[seat_id] = btn
+
+            col += 1
+            if col == 6:
+                col = 0
+                row += 1
+
+        tk.Button(self, text="Confirm Selection", font=("Helvetica", 22, "bold"),
+                  bg="#FF69B4", fg="white",
+                  command=self.confirm_selection).pack(pady=40)
+
+    def toggle_seat(self, seat_id):
+        btn = self.buttons[seat_id]
+
+        if seat_id in self.selected_seats:
+            self.selected_seats.remove(seat_id)
+            btn.config(bg=self.colors["available"])
+        elif len(self.selected_seats) < self.tickets:
+            self.selected_seats.add(seat_id)
+            btn.config(bg=self.colors["selected"])
+        else:
+            messagebox.showwarning("Limit", f"You can only select {self.tickets} seats.")
+
+    def confirm_selection(self):
+        if len(self.selected_seats) != self.tickets:
+            messagebox.showwarning("Error", f"Select exactly {self.tickets} seats.")
+            return
+
+        # Update seats DB
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        for seat in self.selected_seats:
+            c.execute("UPDATE seats SET status = 0 WHERE seat_id = ?", (seat,))
+        conn.commit()
+        conn.close()
+
+        PaymentDetailsWindow(
+            self.movie,
+            self.showtime,
+            self.tickets,
+            list(self.selected_seats),
+            self.main_page
+        )
+
+        self.destroy()
+
+
+# Tickets
+class TicketSelectionWindow(tk.Toplevel):
+    def __init__(self, movie, main_page):
+        super().__init__()
+        self.title(f"{movie} - Tickets")
+        self.attributes('-fullscreen', True)
+        enable_escape_to_exit(self)
+        self.configure(bg="#FFC0CB")
+
+        self.movie = movie
+        self.main_page = main_page
+
+        tk.Label(self, text=f"{movie}", font=("Helvetica", 32, "bold"), bg="#FFC0CB").pack(pady=30)
+
+        tk.Label(self, text="Select Showtime", font=("Helvetica", 24), bg="#FFC0CB").pack()
+
+        self.showtime_var = tk.StringVar(value="12:00 PM")
+        showtimes = ["12:00 PM", "3:00 PM", "6:00 PM", "9:00 PM"]
+        tk.OptionMenu(self, self.showtime_var, *showtimes).pack(pady=20)
+
+        tk.Label(self, text="Tickets", font=("Helvetica", 24), bg="#FFC0CB").pack()
+
+        self.ticket_var = tk.IntVar(value=1)
+        tk.Spinbox(self, from_=1, to=10, font=("Helvetica", 20),
+                   textvariable=self.ticket_var, width=5).pack(pady=20)
+
+        tk.Button(self, text="Select Seats", font=("Helvetica", 22, "bold"),
+                  bg="#FF69B4", fg="white",
+                  command=self.go_to_seats).pack(pady=40)
+
+    def go_to_seats(self):
+        SeatSelectionWindow(self.movie, self.showtime_var.get(), self.ticket_var.get(), self.main_page)
+        self.withdraw()
+
+
+# -------------------- Main Page --------------------
+class MainPage(tk.Tk):
+    instance = None
+
+    def __init__(self):
+        super().__init__()
+        MainPage.instance = self
+
+        self.title("Movie Kiosk")
+        self.attributes('-fullscreen', True)
+        enable_escape_to_exit(self)
+        self.configure(bg="#FFC0CB")
+
+        # Load Background Image
+        self.bg_image = Image.open("png/Hearts_B.png")
+        self.bg_image = self.bg_image.resize((self.winfo_screenwidth(), self.winfo_screenheight()))
+        self.bg_photo = ImageTk.PhotoImage(self.bg_image)
+
+        # FIXED: Correct background label (your version was wrong)
+        self.bg_label = tk.Label(self, image=self.bg_photo)
+        self.bg_label.place(x=0, y=0, relwidth=1, relheight=1)
+
+        tk.Label(self, text="Select a Movie",
+                 font=("Helvetica", 36, "bold"), bg="#FFC0CB").pack(pady=40)
+
+        self.poster_frame = tk.Frame(self, bg="#FFC0CB")
+        self.poster_frame.pack()
+
+        conn = sqlite3.connect(DB_FILE)
+        c = conn.cursor()
+        c.execute("SELECT title, image FROM movies")
+        self.movies = c.fetchall()
+        conn.close()
+
+        self.load_posters()
+
+        tk.Button(self, text="Exit",
+                  font=("Helvetica", 22, "bold"),
+                  bg="#FF69B4", fg="white",
+                  command=self.destroy).pack(pady=40)
+
+    def load_posters(self):
+        self.poster_images = []
+        max_columns = 5
+
+        for idx, (title, image) in enumerate(self.movies):
+            if not os.path.exists(image):
+                continue
+
+            img = Image.open(image).resize((180, 260))
+            photo = ImageTk.PhotoImage(img)
+            self.poster_images.append(photo)
+
+            row = (idx // max_columns) * 2
+            col = idx % max_columns
+
+            btn = tk.Button(self.poster_frame, image=photo, relief="flat", bd=0,
+                            command=lambda m=title: self.open_ticket_window(m))
+            btn.grid(row=row, column=col, padx=20, pady=10)
+
+            tk.Label(self.poster_frame, text=title,
+                     font=("Helvetica", 16, "bold"), bg="#FFC0CB").grid(row=row + 1, column=col)
+
+    def open_ticket_window(self, movie):
+        TicketSelectionWindow(movie, self)
+        self.withdraw()
+
+
+# Run it
+if __name__ == "__main__":
+    init_db()
+    app = MainPage()
+    app.mainloop()
