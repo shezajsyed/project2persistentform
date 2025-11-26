@@ -1,6 +1,7 @@
 import tkinter as tk
 from tkinter import messagebox
 from PIL import Image, ImageTk
+from Seat_Selection import SeatSelectionWindow
 
 # Payment Window
 class PaymentDetailsWindow(tk.Toplevel):
@@ -26,7 +27,7 @@ class PaymentDetailsWindow(tk.Toplevel):
         self.card_entry.pack(fill="x", padx=20, pady=5)
 
         # Expiry & CVV
-        tk.Label(self, text="Expiry (MM/YY)", font=("Comic Sans MS", 12, "bold"), bg="#FFC0CB").pack(anchor="w", padx=20)
+        tk.Label(self, text="Expiry (MMYY)", font=("Comic Sans MS", 12, "bold"), bg="#FFC0CB").pack(anchor="w", padx=20)
         self.expiry_entry = tk.Entry(self, font=("Helvetica", 12))
         self.expiry_entry.pack(fill="x", padx=20, pady=5)
 
@@ -49,11 +50,21 @@ class PaymentDetailsWindow(tk.Toplevel):
         if len(card) != 16 or not card.isdigit():
             messagebox.showerror("Error", "Card number must be 16 digits")
             return
+        if len(expiry) != 4 or not expiry.isdigit():
+            messagebox.showerror("Error", "Expiry date must be 4 digits")
+            return
         if len(cvv) != 3 or not cvv.isdigit():
             messagebox.showerror("Error", "CVV must be 3 digits")
             return
 
         messagebox.showinfo("Success", "Payment Successful!")
+        
+
+        # -- Switches to Seat Selection Screen --
+        import Seat_Selection
+        top = tk.Toplevel()
+        Seat_Selection.SeatSelectionWindow(top)
+        
         self.destroy()
 
 # ---------------- Ticket Selection ----------------
